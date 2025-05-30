@@ -1,6 +1,10 @@
 // Verification handlers for the Discord bot
 const { ButtonBuilder, ActionRowBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const { checkUserEmail, checkUserPhone } = require('../utils/verificationUtils');
+const { createIconChallenge, createTargetEmbed, createIconButtons, verifyIconMatch } = require('../utils/iconVerification');
+
+// Store active verification challenges by user ID
+const activeVerifications = new Map();
 
 /**
  * Creates a verification button for new members
@@ -58,27 +62,82 @@ async function handleVerifyButton(interaction) {
             return;
         }
 
-        // Perform verification checks
-        const hasEmail = await checkUserEmail(user);
-        const hasPhone = await checkUserPhone(user);
+        // Create an icon verification challenge
+        const challenge = createIconChallenge();
 
-        if (!hasEmail || !hasPhone) {
-            // Verification failed
+        // Store the challenge in our active verifications map
+        activeVerifications.set(user.id, {
+            targetIcon: challenge.target.name,
+            timestamp: Date.now()
+        });
+
+        // Create the embed message with the target icon
+        const embed = createTargetEmbed(challenge.target);
+
+        // Create the buttons for icon selection
+        const buttonRows = createIconButtons(challenge.options);
+
+        // Send the verification challenge
+        await interaction.reply({
+            content: 'Please complete the verification challenge:',
+            embeds: [embed],
+            components: buttonRows,
+            ephemeral: true // Only visible to the user who clicked
+        });
+    } catch (error) {
+        console.error(`Error handling verification button: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * Handles icon selection button clicks
+ * @param {Object} interaction - Discord interaction object
+ */
+async function handleIconSelection(interaction) {
+    try {
+        const user = interaction.user;
+        const customId = interaction.customId;
+
+        // Extract the selected icon from the customId (format: icon_select_iconname)
+        const selectedIcon = customId.replace('icon_select_', '');
+
+        // Check if user has an active verification
+        if (!activeVerifications.has(user.id)) {
             await interaction.reply({
-                content: 'Verification failed. Please make sure you have a valid email address and phone number attached to your account.',
-                ephemeral: true // Only visible to the user who clicked
+                content: 'Your verification session has expired. Please click the verify button again.',
+                ephemeral: true
             });
             return;
         }
 
-        // Send gender selection menu
-        await interaction.reply({
-            content: 'Verification successful! Please select your gender:',
-            components: [createGenderSelectionMenu()],
-            ephemeral: true
-        });
+        // Get the verification challenge
+        const verification = activeVerifications.get(user.id);
+        const targetIcon = verification.targetIcon;
+
+        // Check if the selected icon matches the target
+        if (verifyIconMatch(selectedIcon, targetIcon)) {
+            // Successful verification, clean up
+            activeVerifications.delete(user.id);
+
+            // Send gender selection menu
+            await interaction.update({
+                content: 'Verification successful! Please select your gender:',
+                embeds: [],
+                components: [createGenderSelectionMenu()],
+            });
+        } else {
+            // Failed verification
+            activeVerifications.delete(user.id);
+
+            await interaction.update({
+                content: 'Verification failed! You selected the wrong icon. Please try again by clicking the verify button.',
+                embeds: [],
+                components: [],
+            });
+        }
     } catch (error) {
-        console.error(`Error handling verification button: ${error.message}`);
+        console.error(`Error handling icon selection: ${error.message}`);
         throw error;
     }
 }
@@ -139,5 +198,7 @@ async function handleGenderSelection(interaction) {
 module.exports = {
     createVerifyButton,
     handleVerifyButton,
-    handleGenderSelection
+    handleIconSelection,
+    handleGenderSelection,
+    activeVerifications
 };

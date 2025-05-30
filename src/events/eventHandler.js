@@ -1,7 +1,7 @@
 // Event handlers for the Discord bot
 const { Events } = require('discord.js');
 const { handleNewMember } = require('../newcomer/newcomerHandler');
-const { handleVerifyButton, handleGenderSelection } = require('../verify/verificationHandler');
+const { handleVerifyButton, handleGenderSelection, handleIconSelection } = require('../verify/verificationHandler');
 const { setupVerificationChannel } = require('../verify/setupVerification');
 
 /**
@@ -30,6 +30,8 @@ function setupEventHandlers(client) {
             if (interaction.isButton()) {
                 if (interaction.customId === 'verify_user') {
                     await handleVerifyButton(interaction);
+                } else if (interaction.customId.startsWith('icon_select_')) {
+                    await handleIconSelection(interaction);
                 }
             }
 
